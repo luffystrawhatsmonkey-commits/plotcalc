@@ -1248,7 +1248,7 @@ footer{position:relative;z-index:1;border-top:1px solid var(--border);padding:44
               <div style="font-family:var(--mono);font-size:10px;color:var(--text3);line-height:1.6;margin-top:8px;">* Finance cost, brokerage &amp; GST not included</div>
               <div class="ai-insight" id="af-ai-insight" style="margin-top:14px;"></div>
               <div class="share-row">
-                <button class="share-btn" onclick="openShareModalDirect('Apartment Feasibility Calculator','Real Estate Investment — Advanced',afGetShareText())">
+                <button class="share-btn" onclick="openShareModalDirect('Apartment Feasibility Calculator','Real Estate Investment — Advanced',afGetShareText(),'investment')">
                   <svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
                   Share result
                 </button>
@@ -1315,7 +1315,7 @@ footer{position:relative;z-index:1;border-top:1px solid var(--border);padding:44
           <div id="sb-ht-warn" style="display:none;" class="sb-warn"></div>
           <div id="sb-ai-insight" class="ai-insight"></div>
           <div class="share-row" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
-            <button class="share-btn" onclick="openShareModalDirect('Building Setback Calculator','BBMP Bye-Laws · Architecture &amp; Design',sbGetShareText())">
+            <button class="share-btn" onclick="openShareModalDirect('Building Setback Calculator','BBMP Bye-Laws · Architecture &amp; Design',sbGetShareText(),'setback')">
               <svg viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
               Share result
             </button>
@@ -2266,7 +2266,9 @@ window.addEventListener('load',()=>{
   document.getElementById('cc-area').value=2400;calcCC();
   sbBuildRefTable();sbBuildChecklist();
   plaRender();raRender();bacRender();
+  assignCalcIds();
   injectShareButtons();
+  handleCalcHash();
 });
 
 // ── SEARCH INDEX UPDATE ──
@@ -2584,26 +2586,44 @@ function afGetShareText() {
 function openShareModal(btn) {
   const rb = btn.closest('.rb');
   const card = rb.closest('.clc');
-  const title = card?.querySelector('.clcti')?.textContent || 'PlotCalc Result';
-  const cat = card?.querySelector('.clct')?.textContent || 'Calculator';
+  const title = card?.querySelector('.clcti')?.textContent?.trim() || 'PlotCalc Result';
+  const cat   = card?.querySelector('.clct')?.textContent?.trim()  || 'Calculator';
 
-  // Gather results
+  // Build result text from this card's labels/values only
   const labels = Array.from(rb.querySelectorAll('.rlbl'));
-  const vals = Array.from(rb.querySelectorAll('.rv'));
-  const note = rb.querySelector('.rnote')?.textContent?.trim() || '';
-  let lines = [];
+  const vals   = Array.from(rb.querySelectorAll('.rv'));
+  const note   = rb.querySelector('.rnote')?.textContent?.trim() || '';
+  const lines  = [];
   for (let i = 0; i < Math.min(labels.length, vals.length); i++) {
     const v = vals[i].textContent.trim();
-    if (v && v !== '—') lines.push(`${labels[i].textContent.trim()}: ${v}`);
+    if (v && v !== '—') lines.push(labels[i].textContent.trim() + ': ' + v);
   }
-  const text = `📐 PlotCalc — ${title}\n${'─'.repeat(32)}\n${lines.join('\n')}${note ? '\n\n' + note : ''}\n\nGenerated at plotcalc.com`;
-  const url = window.location.href.split('?')[0] + '?calc=' + encodeURIComponent(title);
+  const text = '📐 PlotCalc — ' + title + '\n' + '─'.repeat(32) + '\n' + lines.join('\n') + (note ? '\n\n' + note : '') + '\n\nView at plotcalc.com';
+
+  // Anchor URL: use the card's assigned data-calc-id (set during injection)
+  const slug = card?.dataset?.calcId || slugify(title);
+  const base = window.location.href.split('?')[0].split('#')[0];
+  const url  = base + '#' + slug;
 
   _shareData = { title, cat, text, url };
+  _showShareModal(title, cat, url);
+}
 
+function openShareModalDirect(title, cat, text, sectionId) {
+  const base = window.location.href.split('?')[0].split('#')[0];
+  const url  = base + '#' + (sectionId || slugify(title));
+  _shareData = { title, cat, text, url };
+  _showShareModal(title, cat, url);
+}
+
+function _showShareModal(title, cat, url) {
   document.getElementById('share-modal-subtitle').textContent = cat + ' · ' + title;
   document.getElementById('share-url-box').textContent = url;
   document.getElementById('share-modal-bg').classList.add('open');
+}
+
+function slugify(str) {
+  return 'calc-' + str.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
 
 function closeShareModal() {
@@ -2613,25 +2633,46 @@ function closeShareModal() {
 function shareAction(type) {
   const { title, text, url } = _shareData;
   if (type === 'copy') {
-    navigator.clipboard.writeText(url).then(() => {
-      showToast('✓', 'Link copied to clipboard!');
-      closeShareModal();
-    });
+    navigator.clipboard.writeText(url).then(() => { showToast('✓', 'Link copied!'); closeShareModal(); });
   } else if (type === 'text') {
-    navigator.clipboard.writeText(text).then(() => {
-      showToast('✓', 'Result text copied!');
-      closeShareModal();
-    });
+    navigator.clipboard.writeText(text).then(() => { showToast('✓', 'Results copied!'); closeShareModal(); });
   } else if (type === 'whatsapp') {
-    window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank');
+    window.open('https://wa.me/?text=' + encodeURIComponent(title + '\n' + url + '\n\n' + text), '_blank');
     closeShareModal();
   } else if (type === 'email') {
-    window.open('mailto:?subject=PlotCalc — ' + encodeURIComponent(title) + '&body=' + encodeURIComponent(text), '_blank');
+    window.open('mailto:?subject=PlotCalc — ' + encodeURIComponent(title) + '&body=' + encodeURIComponent(text + '\n\nLink: ' + url), '_blank');
     closeShareModal();
   } else if (type === 'print') {
     closeShareModal();
     window.print();
   }
+}
+
+// Assign slug IDs to each .clc card so anchor links work
+function assignCalcIds() {
+  document.querySelectorAll('.clc').forEach(card => {
+    const title = card.querySelector('.clcti')?.textContent?.trim() || '';
+    if (title && !card.id) {
+      const slug = slugify(title);
+      card.id = slug;
+      card.dataset.calcId = slug;
+    }
+  });
+}
+
+// On load: if URL has a #calc-... hash, scroll to that card and highlight it
+function handleCalcHash() {
+  const hash = window.location.hash;
+  if (!hash || !hash.startsWith('#calc-')) return;
+  const el = document.querySelector(hash);
+  if (!el) return;
+  setTimeout(() => {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.style.transition = 'box-shadow 0.3s, outline 0.3s';
+    el.style.outline = '2.5px solid var(--accent)';
+    el.style.boxShadow = '0 0 0 6px rgba(26,107,90,0.12)';
+    setTimeout(() => { el.style.outline = ''; el.style.boxShadow = ''; }, 2200);
+  }, 400);
 }
 
 // Toast
