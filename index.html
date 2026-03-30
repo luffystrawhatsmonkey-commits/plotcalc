@@ -291,14 +291,44 @@ footer{position:relative;z-index:1;border-top:1px solid var(--border);padding:44
 .share-close:hover{background:var(--surface2);color:var(--text);}
 /* ── PRINT ── */
 @media print {
-  nav, .ads, footer, .share-row, .cb, .ftog, .fbox, .btnadd, .btnrm, .ctabs,
-  .share-modal-bg, #pc-toast, .eyebrow { display: none !important; }
-  body { background: #fff !important; }
-  body::before { display: none; }
-  .clc, .rb { break-inside: avoid; box-shadow: none; border: 1px solid #ddd; }
-  .rb { display: block !important; }
-  .hero { padding: 20px 0; }
-  .ai-insight { border: 1px solid #ccc; background: #f9f9f9; }
+  /* Default: hide everything */
+  body > * { display: none !important; }
+  /* When focus-print is active, show only the focused card */
+  body.focus-print { background: #fff !important; }
+  body.focus-print::before { display: none !important; }
+  body.focus-print .print-focus-card {
+    display: block !important;
+    position: static !important;
+    margin: 0 !important;
+    padding: 24px !important;
+    box-shadow: none !important;
+    border: 1px solid #ddd !important;
+    border-radius: 8px !important;
+    page-break-inside: avoid;
+  }
+  body.focus-print .print-focus-card * { display: revert !important; }
+  body.focus-print .print-focus-card .share-row,
+  body.focus-print .print-focus-card .cb,
+  body.focus-print .print-focus-card .ftog,
+  body.focus-print .print-focus-card .fbox,
+  body.focus-print .print-focus-card .ctabs,
+  body.focus-print .print-focus-card .btnadd,
+  body.focus-print .print-focus-card .btnrm { display: none !important; }
+  body.focus-print .print-focus-card .rb { display: block !important; }
+  body.focus-print .print-focus-card .ai-insight { border: 1px solid #ccc; background: #f9f9f9; }
+  /* Print header */
+  body.focus-print::after {
+    content: 'PlotCalc · plotcalc.com · Results are estimates only';
+    display: block !important;
+    position: static;
+    font-family: monospace;
+    font-size: 10px;
+    color: #999;
+    text-align: center;
+    padding-top: 16px;
+    border-top: 1px solid #eee;
+    margin-top: 16px;
+  }
 }
 </style>
 </head>
@@ -2589,7 +2619,6 @@ function openShareModal(btn) {
   const title = card?.querySelector('.clcti')?.textContent?.trim() || 'PlotCalc Result';
   const cat   = card?.querySelector('.clct')?.textContent?.trim()  || 'Calculator';
 
-  // Build result text from this card's labels/values only
   const labels = Array.from(rb.querySelectorAll('.rlbl'));
   const vals   = Array.from(rb.querySelectorAll('.rv'));
   const note   = rb.querySelector('.rnote')?.textContent?.trim() || '';
@@ -2600,19 +2629,21 @@ function openShareModal(btn) {
   }
   const text = '📐 PlotCalc — ' + title + '\n' + '─'.repeat(32) + '\n' + lines.join('\n') + (note ? '\n\n' + note : '') + '\n\nView at plotcalc.com';
 
-  // Anchor URL: use the card's assigned data-calc-id (set during injection)
   const slug = card?.dataset?.calcId || slugify(title);
   const base = window.location.href.split('?')[0].split('#')[0];
   const url  = base + '#' + slug;
 
-  _shareData = { title, cat, text, url };
+  // Store the card element for focused printing
+  _shareData = { title, cat, text, url, printEl: card };
   _showShareModal(title, cat, url);
 }
 
 function openShareModalDirect(title, cat, text, sectionId) {
   const base = window.location.href.split('?')[0].split('#')[0];
   const url  = base + '#' + (sectionId || slugify(title));
-  _shareData = { title, cat, text, url };
+  // For direct calls, find the section element for printing
+  const printEl = document.getElementById(sectionId) || null;
+  _shareData = { title, cat, text, url, printEl };
   _showShareModal(title, cat, url);
 }
 
@@ -2631,7 +2662,7 @@ function closeShareModal() {
 }
 
 function shareAction(type) {
-  const { title, text, url } = _shareData;
+  const { title, text, url, printEl } = _shareData;
   if (type === 'copy') {
     navigator.clipboard.writeText(url).then(() => { showToast('✓', 'Link copied!'); closeShareModal(); });
   } else if (type === 'text') {
@@ -2644,8 +2675,33 @@ function shareAction(type) {
     closeShareModal();
   } else if (type === 'print') {
     closeShareModal();
-    window.print();
+    focusPrint(printEl, title);
   }
+}
+
+function focusPrint(el, title) {
+  if (!el) { window.print(); return; }
+
+  // Make sure the result box inside is visible before printing
+  el.querySelectorAll('.rb').forEach(r => r.classList.add('show'));
+
+  // Add a temporary print title banner
+  const banner = document.createElement('div');
+  banner.id = 'print-banner';
+  banner.style.cssText = 'font-family:serif;font-size:18px;font-weight:700;margin-bottom:12px;padding-bottom:10px;border-bottom:2px solid #1a6b5a;color:#1a6b5a;';
+  banner.textContent = '📐 PlotCalc — ' + title;
+  el.insertBefore(banner, el.firstChild);
+
+  // Apply focus classes
+  el.classList.add('print-focus-card');
+  document.body.classList.add('focus-print');
+
+  window.print();
+
+  // Clean up after print dialog closes
+  el.classList.remove('print-focus-card');
+  document.body.classList.remove('focus-print');
+  banner.remove();
 }
 
 // Assign slug IDs to each .clc card so anchor links work
